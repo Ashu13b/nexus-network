@@ -60,16 +60,37 @@ fshare() {
             _fshare_wait_cf "$lp" "$cf_log" ;;
 
         "cld2lcl")
-            _fshare_start_remote "$dir" "$lp" "$remote" || return 1
-            ssh -T -o ConnectTimeout=5 -f -N -L "$lp:127.0.0.1:$lp" "$remote"
-            echo -e "  ${C_GREEN}✓ LOCAL:${C_RESET} http://127.0.0.1:$lp" ;;
+            if ! $use_picker && [ "$dir" = "~" ] && [ "$lp" = "${TNL_DEF_FSERVER_PORT:-9000}" ]; then
+                # Default case — use dedicated SSH host (clean, no scripting)
+                echo -e "${C_CYAN}[FSHARE]${C_RESET} Source: ${C_BOLD}oracle ~/  ${C_RESET}"
+                pkill -f "ssh.*fshare" 2>/dev/null; sleep 0.2
+                ssh fshare &
+                sleep 2
+                echo -e "  ${C_GREEN}✓ LOCAL:${C_RESET} http://127.0.0.1:$lp"
+            else
+                # Pick mode or custom port — fall back to scripting
+                _fshare_start_remote "$dir" "$lp" "$remote" || return 1
+                ssh -T -o ConnectTimeout=5 -f -N -L "$lp:127.0.0.1:$lp" "$remote"
+                echo -e "  ${C_GREEN}✓ LOCAL:${C_RESET} http://127.0.0.1:$lp"
+            fi ;;
 
         "cld2lan")
-            _fshare_start_remote "$dir" "$lp" "$remote" || return 1
-            pkill -f "socat.*TCP-LISTEN:$lp" 2>/dev/null
-            ssh -T -o ConnectTimeout=5 -f -N -L "$lp:127.0.0.1:$lp" "$remote"
-            socat TCP-LISTEN:"$lp",bind="$ip",fork,reuseaddr TCP:127.0.0.1:"$lp" &
-            echo -e "  ${C_GREEN}✓ LAN:${C_RESET} http://$ip:$lp" ;;
+            if ! $use_picker && [ "$dir" = "~" ] && [ "$lp" = "${TNL_DEF_FSERVER_PORT:-9000}" ]; then
+                # Default case — use SSH host for server+tunnel, add socat for LAN
+                echo -e "${C_CYAN}[FSHARE]${C_RESET} Source: ${C_BOLD}oracle ~/  ${C_RESET}"
+                pkill -f "ssh.*fshare" 2>/dev/null
+                pkill -f "socat.*TCP-LISTEN:$lp" 2>/dev/null; sleep 0.2
+                ssh fshare &
+                sleep 2
+                socat TCP-LISTEN:"$lp",bind="$ip",fork,reuseaddr TCP:127.0.0.1:"$lp" &
+                echo -e "  ${C_GREEN}✓ LAN:${C_RESET} http://$ip:$lp"
+            else
+                _fshare_start_remote "$dir" "$lp" "$remote" || return 1
+                pkill -f "socat.*TCP-LISTEN:$lp" 2>/dev/null
+                ssh -T -o ConnectTimeout=5 -f -N -L "$lp:127.0.0.1:$lp" "$remote"
+                socat TCP-LISTEN:"$lp",bind="$ip",fork,reuseaddr TCP:127.0.0.1:"$lp" &
+                echo -e "  ${C_GREEN}✓ LAN:${C_RESET} http://$ip:$lp"
+            fi ;;
 
         "cld2net")
             _fshare_start_remote "$dir" "$lp" "$remote" || return 1
