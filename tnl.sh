@@ -32,8 +32,16 @@ tnl() {
       style_header "PIPELINES & LINKS"
       local found=0
 
-      # [CLD2LCL] Symmetry Check
+      # Collect ports covered by SSH tunnel entries (to avoid duplicate CLD2LCL entries)
+      local ssh_covered_ports=""
+      local _pipelines; _pipelines="$(get_active_pipelines)"
+      while IFS='|' read -r type port desc url; do
+        [ "$type" = "SSH" ] && ssh_covered_ports="$ssh_covered_ports $port"
+      done <<< "$_pipelines"
+
+      # [CLD2LCL] Symmetry Check — skip ports already shown as SSH tunnels
       for p in $(echo $l_ports); do
+        echo "$ssh_covered_ports" | grep -qw "$p" && continue
         if echo "$r_ports" | grep -qw "$p"; then
           [ $found -ne 0 ] && printf "  ${C_DIM}──────────────────────────${C_RESET}\n"
           printf "  %b[CLD2LCL] Oracle ➔ Phone%b\n  http://127.0.0.1:%s\n" "${B_BLUE}" "${C_RESET}" "$p"
@@ -41,14 +49,14 @@ tnl() {
         fi
       done
 
-      # [LCL2LAN] [LCL2NET] [HTTP] from discovery engine
+      # [SSH] [LCL2LAN] [LCL2NET] [HTTP] from discovery engine
       while IFS='|' read -r type port desc url; do
         [ -z "$type" ] && continue
         [ $found -ne 0 ] && printf "  ${C_DIM}──────────────────────────${C_RESET}\n"
         [ "$type" = "CF_L" ] && url=$(grep -oE "https://.*\.trycloudflare\.com" "$cf_log" 2>/dev/null | tail -1)
         printf "  %b[%s] %s%b\n  %s\n" "${B_BLUE}" "$type" "$desc" "${C_RESET}" "${url:-[Starting...]}"
         found=1
-      done <<< "$(get_active_pipelines)"
+      done <<< "$_pipelines"
 
       # [CLD2NET]
       if [ -n "$r_cf_active" ]; then

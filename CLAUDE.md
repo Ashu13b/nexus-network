@@ -72,5 +72,5 @@ This module depends on `~/.bash.d/core/` — which must be sourced first:
 - **No `lsof` on Termux** — Android SELinux blocks it. Use Python socket probing (`list_local_ports()`) or `ss` for local port checks. `lsof` is only used on Oracle (Ubuntu) side via SSH.
 - **Cross-shell compatibility** — All functions support both `bash` and `zsh`. Array indexing differs: zsh is 1-indexed, bash is 0-indexed. Check `$CURRENT_SHELL` where needed.
 - **`unalias` guard** — `scan.sh` calls `unalias scan 2>/dev/null` at load time to prevent zsh conflicts when the function name matches an existing alias.
-- **Port default** — `TNL_DEF_FSERVER_PORT` (default `6000`) is used by `fshare` for the HTTP server port.
+- **Port default** — `TNL_DEF_FSERVER_PORT` (default `9000`) is used by `fshare` for the HTTP server port. Port 6000 is blocked by Chrome (X11), port 8080 reserved for code-server.
 - **Cloudflare URL detection** — All tunnel wait loops grep for `https://[a-z0-9-]+\.trycloudflare\.com` in `~/.cloudflared.log`.
