@@ -191,10 +191,26 @@ tnl() {
       local p="$arg2"; [ -z "$p" ] && pick_pipeline_port p; [ -z "$p" ] && return 1
       if [[ "$p" == cf_* ]]; then
         pkill -f "cloudflared tunnel"; ssh $ssh_opt "$remote" "pkill -f 'cloudflared tunnel'"
+        echo -e "${C_RED}[KILLED]${C_RESET} Cloudflare tunnel stopped."
       else
-        kill_port "$p"
-      fi
-      echo -e "${C_RED}[KILLED]${C_RESET} Target stopped." ;;
+        # Check if this port belongs to a named SSH tunnel (kill by host, not port)
+        local ssh_host=""
+        while IFS='|' read -r _type lport rport desc url; do
+          if [ "$_type" = "CLD2LCL" ] && [ "$lport" = "$p" ]; then
+            ssh_host="${desc%% *}"  # first word is always the host alias
+            break
+          fi
+        done <<< "$(get_active_pipelines)"
+
+        if [ -n "$ssh_host" ]; then
+          pkill -f "ssh $ssh_host" 2>/dev/null
+          ssh -O exit "$ssh_host" 2>/dev/null  # close ControlMaster if active
+          echo -e "${C_RED}[KILLED]${C_RESET} SSH tunnel ${C_BOLD}$ssh_host${C_RESET} (port $p) stopped."
+        else
+          kill_port "$p"
+          echo -e "${C_RED}[KILLED]${C_RESET} Port $p stopped."
+        fi
+      fi ;;
 
     "xall")
       pkill -9 -f "socat|http.server|ssh -f -N|cloudflared tunnel"
