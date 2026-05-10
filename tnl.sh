@@ -34,7 +34,7 @@ tnl() {
         printf "  %b%-10s  ✗%b\n" "${C_DIM}" "Phone" "${C_RESET}"
       fi
       if [ -n "$lan_ok" ]; then
-        printf "  %-10s ${C_GREEN}✓${C_RESET}\n" "LAN"
+        printf "  %-10s ${C_GREEN}✓${C_RESET}  http://$ip\n" "LAN"
       else
         printf "  %b%-10s  ✗%b\n" "${C_DIM}" "LAN" "${C_RESET}"
       fi
@@ -81,8 +81,7 @@ tnl() {
         found=1
       fi
 
-      [ $found -eq 0 ] && printf "\n  %bNo active pipelines%b\n" "${C_DIM}" "${C_RESET}"
-      [ "$ip" != "127.0.0.1" ] && printf "\n  %b⌁%b  http://$ip  (LAN)\n" "${B_GREEN}" "${C_RESET}" ;;
+      [ $found -eq 0 ] && printf "\n  %bNo active pipelines%b\n" "${C_DIM}" "${C_RESET}" ;;
 
     "cld2net")
       local rp="$arg2"; [ -z "$rp" ] && pick_port_oracle rp; [ -z "$rp" ] && return
