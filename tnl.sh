@@ -10,7 +10,7 @@ tnl() {
     "st")
       # --- 1. PROBE STATE ---
       local r_ports_raw=$(ssh -q "$remote" "ss -tlnp 2>/dev/null || lsof -i -P -n | grep LISTEN" 2>/dev/null)
-      local r_ports=$(echo "$r_ports_raw" | grep -oE ':\d+' | tr -d ':' | sort -un | tr '\n' ' ' | sed 's/ $//')
+      local r_ports=$(echo "$r_ports_raw" | grep -oE ':[0-9]+' | tr -d ':' | sort -un | tr '\n' ' ' | sed 's/ $//')
       local l_ports=$(list_local_ports)
       local local_ps=$(ps -ef | grep -v grep)
       local r_cf_active=$(ssh -q "$remote" "pgrep -f 'cloudflared tunnel'" 2>/dev/null)
