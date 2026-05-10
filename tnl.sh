@@ -10,64 +10,79 @@ tnl() {
     "st")
       # --- 1. PROBE STATE ---
       local r_ports_raw=$(ssh -q "$remote" "ss -tlnp 2>/dev/null || lsof -i -P -n | grep LISTEN" 2>/dev/null)
-      local r_ports=$(echo "$r_ports_raw" | grep -oE ':[0-9]+' | tr -d ':' | sort -un | tr '\n' ' ' | sed 's/ $//')
+      # Filter to user-space ports only (>1023 — skip SSH/DNS/RPC noise)
+      local r_ports=$(echo "$r_ports_raw" | grep -oE ':[0-9]+' | tr -d ':' | sort -un \
+        | awk '$1+0 > 1023' | tr '\n' ' ' | sed 's/ $//')
       local l_ports=$(list_local_ports)
       local local_ps=$(ps -ef | grep -v grep)
       local r_cf_active=$(ssh -q "$remote" "pgrep -f 'cloudflared tunnel'" 2>/dev/null)
+      local lan_ok=""; echo "$local_ps" | grep -q "socat" && lan_ok="1"
+      local net_ok=""; [ -n "$r_cf_active" ] && net_ok="1"
+      echo "$local_ps" | grep -q "cloudflared" && net_ok="1"
 
-      local c_sym="${C_RED}✗${C_RESET}"; [ -n "$r_ports" ] && c_sym="${C_GREEN}✓${C_RESET}"
-      local l_sym="${C_RED}✗${C_RESET}"; [ -n "$l_ports" ] && l_sym="${C_GREEN}✓${C_RESET}"
-      local a_sym="${C_RED}✗${C_RESET}"; echo "$local_ps" | grep -q "socat" && a_sym="${C_GREEN}✓${C_RESET}"
-      local n_sym="${C_RED}✗${C_RESET}"; [[ -n "$r_cf_active" || "$local_ps" =~ "cloudflared" ]] && n_sym="${C_GREEN}✓${C_RESET}"
+      # --- 2. STATUS ROWS ---
+      style_header "NETWORK STATUS"
+      printf "\n"
+      if [ -n "$r_ports" ]; then
+        printf "  %b%-10s%b ${C_GREEN}✓${C_RESET}  %s\n" "${B_BLUE}" "Oracle" "${C_RESET}" "$r_ports"
+      else
+        printf "  %b%-10s  ✗%b\n" "${C_DIM}" "Oracle" "${C_RESET}"
+      fi
+      if [ -n "$l_ports" ]; then
+        printf "  %b%-10s%b ${C_GREEN}✓${C_RESET}  %s\n" "${B_GREEN}" "Phone" "${C_RESET}" "$l_ports"
+      else
+        printf "  %b%-10s  ✗%b\n" "${C_DIM}" "Phone" "${C_RESET}"
+      fi
+      if [ -n "$lan_ok" ]; then
+        printf "  %-10s ${C_GREEN}✓${C_RESET}\n" "LAN"
+      else
+        printf "  %b%-10s  ✗%b\n" "${C_DIM}" "LAN" "${C_RESET}"
+      fi
+      if [ -n "$net_ok" ]; then
+        printf "  %-10s ${C_GREEN}✓${C_RESET}\n" "Internet"
+      else
+        printf "  %b%-10s  ✗%b\n" "${C_DIM}" "Internet" "${C_RESET}"
+      fi
 
-      style_header "NETWORK DASHBOARD"
-      local summary="[CLD:$c_sym] | [LCL:$l_sym] | [LAN:$a_sym] | [NET:$n_sym]"
-      local pad=$(( (width - 34) / 2 )); [ $pad -lt 0 ] && pad=0
-      printf "%${pad}s%b\n" "" "$summary"
-
-      printf "\n  %b%-7s%b %s | %b%-6s%b %s\n" \
-        "${B_BLUE}" "ORACLE:" "${C_RESET}" "${r_ports:-None}" \
-        "${B_GREEN}" "PHONE:" "${C_RESET}" "${l_ports:-None}"
-
-      style_header "PIPELINES & LINKS"
+      # --- 3. PIPELINE ENTRIES ---
+      style_header "ACTIVE PIPELINES"
       local found=0
-
-      # Collect ports covered by SSH tunnel entries (to avoid duplicate CLD2LCL entries)
       local ssh_covered_ports=""
       local _pipelines; _pipelines="$(get_active_pipelines)"
       while IFS='|' read -r type port desc url; do
         [ "$type" = "SSH" ] && ssh_covered_ports="$ssh_covered_ports $port"
       done <<< "$_pipelines"
 
-      # [CLD2LCL] Symmetry Check — skip ports already shown as SSH tunnels
+      # Symmetry-detected CLD2LCL (skip ports covered by named SSH entries)
       for p in $(echo $l_ports); do
         echo "$ssh_covered_ports" | grep -qw "$p" && continue
         if echo "$r_ports" | grep -qw "$p"; then
           [ $found -ne 0 ] && printf "  ${C_DIM}──────────────────────────${C_RESET}\n"
-          printf "  %b[CLD2LCL] Oracle ➔ Phone%b\n  http://127.0.0.1:%s\n" "${B_BLUE}" "${C_RESET}" "$p"
+          printf "  %b▸ CLD2LCL %b Oracle → Phone\n  %b  └─%b http://127.0.0.1:%s\n" \
+            "${B_BLUE}" "${C_RESET}" "${C_DIM}" "${C_RESET}" "$p"
           found=1
         fi
       done
 
-      # [SSH] [LCL2LAN] [LCL2NET] [HTTP] from discovery engine
       while IFS='|' read -r type port desc url; do
         [ -z "$type" ] && continue
         [ $found -ne 0 ] && printf "  ${C_DIM}──────────────────────────${C_RESET}\n"
         [ "$type" = "CF_L" ] && url=$(grep -oE "https://.*\.trycloudflare\.com" "$cf_log" 2>/dev/null | tail -1)
-        printf "  %b[%s] %s%b\n  %s\n" "${B_BLUE}" "$type" "$desc" "${C_RESET}" "${url:-[Starting...]}"
+        printf "  %b▸ %-8s%b %s\n  %b  └─%b %s\n" \
+          "${B_BLUE}" "$type" "${C_RESET}" "$desc" "${C_DIM}" "${C_RESET}" "${url:-[starting...]}"
         found=1
       done <<< "$_pipelines"
 
-      # [CLD2NET]
       if [ -n "$r_cf_active" ]; then
         [ $found -ne 0 ] && printf "  ${C_DIM}──────────────────────────${C_RESET}\n"
         local u=$(ssh -q "$remote" "grep -oE 'https://.*\.trycloudflare\.com' ~/cf.log 2>/dev/null | tail -1")
-        printf "  %b[CLD2NET] Oracle ➔ Global%b\n  %s\n" "${B_BLUE}" "${C_RESET}" "${u:-[Active]}"
+        printf "  %b▸ CLD2NET %b Oracle → Global\n  %b  └─%b %s\n" \
+          "${B_BLUE}" "${C_RESET}" "${C_DIM}" "${C_RESET}" "${u:-[active]}"
         found=1
       fi
 
-      [ $found -eq 0 ] && echo "  No active pipelines detected."
-      [ "$ip" != "127.0.0.1" ] && echo -e "\n  ${B_BLUE}LAN IP:${C_RESET} http://$ip" ;;
+      [ $found -eq 0 ] && printf "\n  %bNo active pipelines%b\n" "${C_DIM}" "${C_RESET}"
+      [ "$ip" != "127.0.0.1" ] && printf "\n  %b⌁%b  http://$ip  (LAN)\n" "${B_GREEN}" "${C_RESET}" ;;
 
     "cld2net")
       local rp="$arg2"; [ -z "$rp" ] && pick_port_oracle rp; [ -z "$rp" ] && return
