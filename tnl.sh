@@ -50,7 +50,7 @@ tnl() {
       local ssh_covered_ports=""
       local _pipelines; _pipelines="$(get_active_pipelines)"
       while IFS='|' read -r type port desc url; do
-        [ "$type" = "SSH" ] && ssh_covered_ports="$ssh_covered_ports $port"
+        [ "$type" = "CLD2LCL" ] && ssh_covered_ports="$ssh_covered_ports $port"
       done <<< "$_pipelines"
 
       # Symmetry-detected CLD2LCL (skip ports covered by named SSH entries)
