@@ -1,4 +1,5 @@
 # ── Network Security Auditor (Engineer Edition) ──
+unalias scan 2>/dev/null; unalias tnl 2>/dev/null; unalias fshare 2>/dev/null
 
 # Helper: Find the real local subnet
 _scan_get_subnet() {
