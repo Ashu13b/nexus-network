@@ -3,7 +3,7 @@
 tnl() {
   local cmd="$1"; local arg2="$2"; local ip=$(mylan); local remote="${TNL_REMOTE:-ubu}"
   local cf_log="$HOME/.cloudflared.log"; local rem_cf_log="/home/ubuntu/cf.log"
-  local ssh_opt="-q -o ConnectTimeout=5"
+  local ssh_opt="-T -o ConnectTimeout=5"
   local width=${COLUMNS:-$(tput cols 2>/dev/null || echo 40)}
 
   case "$cmd" in

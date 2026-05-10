@@ -60,22 +60,22 @@ fshare() {
             _fshare_wait_cf "$lp" "$cf_log" ;;
 
         "cld2lcl")
-            _fshare_start_remote "$dir" "$lp" "$remote" "$ssh_opt" || return 1
-            ssh $ssh_opt -f -N -L "$lp:127.0.0.1:$lp" "$remote"
+            _fshare_start_remote "$dir" "$lp" "$remote" || return 1
+            ssh -T -o ConnectTimeout=5 -f -N -L "$lp:127.0.0.1:$lp" "$remote"
             echo -e "  ${C_GREEN}✓ LOCAL:${C_RESET} http://127.0.0.1:$lp" ;;
 
         "cld2lan")
-            _fshare_start_remote "$dir" "$lp" "$remote" "$ssh_opt" || return 1
+            _fshare_start_remote "$dir" "$lp" "$remote" || return 1
             pkill -f "socat.*TCP-LISTEN:$lp" 2>/dev/null
-            ssh $ssh_opt -f -N -L "$lp:127.0.0.1:$lp" "$remote"
+            ssh -T -o ConnectTimeout=5 -f -N -L "$lp:127.0.0.1:$lp" "$remote"
             socat TCP-LISTEN:"$lp",bind="$ip",fork,reuseaddr TCP:127.0.0.1:"$lp" &
             echo -e "  ${C_GREEN}✓ LAN:${C_RESET} http://$ip:$lp" ;;
 
         "cld2net")
-            _fshare_start_remote "$dir" "$lp" "$remote" "$ssh_opt" || return 1
+            _fshare_start_remote "$dir" "$lp" "$remote" || return 1
             echo -n "  Starting oracle tunnel"
             local rem_url
-            rem_url=$(ssh $ssh_opt "$remote" "
+            rem_url=$(ssh -T -o ConnectTimeout=5 "$remote" "
                 pkill -f 'cloudflared tunnel' 2>/dev/null
                 cloudflared tunnel --url http://localhost:$lp > ~/cf.log 2>&1 &
                 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
@@ -89,10 +89,10 @@ fshare() {
                               || echo -e "  ${C_YELLOW}⚠ Tunnel starting... check tnl st${C_RESET}" ;;
 
         "cld2all")
-            _fshare_start_remote "$dir" "$lp" "$remote" "$ssh_opt" || return 1
+            _fshare_start_remote "$dir" "$lp" "$remote" || return 1
             echo -n "  Starting oracle tunnel"
             local rem_url
-            rem_url=$(ssh $ssh_opt "$remote" "
+            rem_url=$(ssh -T -o ConnectTimeout=5 "$remote" "
                 pkill -f 'cloudflared tunnel' 2>/dev/null
                 cloudflared tunnel --url http://localhost:$lp > ~/cf.log 2>&1 &
                 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
@@ -103,7 +103,7 @@ fshare() {
             " 2>/dev/null | tr -d '\r')
             echo ""
             pkill -f "socat.*TCP-LISTEN:$lp" 2>/dev/null
-            ssh $ssh_opt -f -N -L "$lp:127.0.0.1:$lp" "$remote"
+            ssh -T -o ConnectTimeout=5 -f -N -L "$lp:127.0.0.1:$lp" "$remote"
             socat TCP-LISTEN:"$lp",bind="$ip",fork,reuseaddr TCP:127.0.0.1:"$lp" &
             echo -e "  ${C_GREEN}✓ LAN:${C_RESET} http://$ip:$lp"
             [ -n "$rem_url" ] && echo -e "  ${C_GREEN}✓ NET:${C_RESET} ${B_MAGENTA}$rem_url${C_RESET}" \
@@ -136,10 +136,10 @@ _fshare_start_local() {
 }
 
 _fshare_start_remote() {
-    local dir="$1" lp="$2" remote="$3" ssh_opt="$4"
+    local dir="$1" lp="$2" remote="$3"
     echo -e "  Starting oracle file server..."
-    ssh $ssh_opt "$remote" \
-        "pkill -f 'http.server $lp' 2>/dev/null; cd $dir && nohup python3 -m http.server $lp > /dev/null 2>&1 &" \
+    ssh -T -o ConnectTimeout=5 "$remote" \
+        "fuser -k ${lp}/tcp 2>/dev/null; cd $dir && nohup python3 -m http.server $lp > /dev/null 2>&1 &" \
         2>/dev/null
     if [ $? -ne 0 ]; then
         echo -e "  ${C_RED}✗ Cannot reach oracle${C_RESET}"; return 1
