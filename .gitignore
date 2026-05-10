@@ -1,0 +1,3 @@
+# No secrets in this module — secrets live in ~/.bash.d/user/secrets.env
+*.log
+*.tmp
