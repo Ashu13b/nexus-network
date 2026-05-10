@@ -49,8 +49,8 @@ tnl() {
       local found=0
       local ssh_covered_ports=""
       local _pipelines; _pipelines="$(get_active_pipelines)"
-      while IFS='|' read -r type port desc url; do
-        [ "$type" = "CLD2LCL" ] && ssh_covered_ports="$ssh_covered_ports $port"
+      while IFS='|' read -r type lport rport desc url; do
+        [ "$type" = "CLD2LCL" ] && ssh_covered_ports="$ssh_covered_ports $lport"
       done <<< "$_pipelines"
 
       # Symmetry-detected CLD2LCL (skip ports covered by named SSH entries)
@@ -64,12 +64,20 @@ tnl() {
         fi
       done
 
-      while IFS='|' read -r type port desc url; do
+      while IFS='|' read -r type lport rport desc url; do
         [ -z "$type" ] && continue
         [ $found -ne 0 ] && printf "  ${C_DIM}──────────────────────────${C_RESET}\n"
         [ "$type" = "CF_L" ] && url=$(grep -oE "https://.*\.trycloudflare\.com" "$cf_log" 2>/dev/null | tail -1)
-        printf "  %b▸ %-8s%b %s\n  %b  └─%b %s\n" \
-          "${B_BLUE}" "$type" "${C_RESET}" "$desc" "${C_DIM}" "${C_RESET}" "${url:-[starting...]}"
+
+        local badge="${B_BLUE}▸" note=""
+        if [ "$type" = "CLD2LCL" ] && [ -n "$rport" ]; then
+          if ! echo " $r_ports " | grep -qw "$rport"; then
+            badge="${C_YELLOW}⚠"
+            note="  ${C_DIM}[oracle:$rport offline]${C_RESET}"
+          fi
+        fi
+        printf "  %b %-8s%b %s\n  %b  └─%b %s%b\n" \
+          "$badge" "$type" "${C_RESET}" "$desc" "${C_DIM}" "${C_RESET}" "${url:-[starting...]}" "$note"
         found=1
       done <<< "$_pipelines"
 
