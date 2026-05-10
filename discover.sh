@@ -137,8 +137,9 @@ for p in sorted(list(set(pipes))):
 
 # Kill a local port's owning process
 kill_port() {
-    local p="$1"; [ -z "$p" ] && return 1
-    pgrep -f "$p" | xargs kill -9 2>/dev/null
+    local p="$1"
+    [[ "$p" =~ ^[0-9]+$ ]] || return 1
+    fuser -k "${p}/tcp" 2>/dev/null || pgrep -f ":${p}" | xargs kill -9 2>/dev/null
 }
 
 # ── Pipeline Port Picker ──
@@ -186,7 +187,9 @@ pick_port_oracle() {
     style_header "$remote PORTS" >&2
     local i=1; for p in "${listeners[@]}"; do echo "$i) Port $p" >&2; ((i++)); done
     local choice; _smart_select 1 ${#listeners[@]} 1 "Select source port" choice || return 1
-    if [ "$CURRENT_SHELL" = "zsh" ]; then eval "$target_var=\"${listeners[$choice]}\""
-    else eval "$target_var=\"${listeners[$((choice-1))]}\""; fi
+    local _val
+    if [ "$CURRENT_SHELL" = "zsh" ]; then _val="${listeners[$choice]}"
+    else _val="${listeners[$((choice-1))]}"; fi
+    eval "$target_var=\$_val"
     return 0
 }

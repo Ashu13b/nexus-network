@@ -14,9 +14,8 @@ fshare() {
         mode="${1:-}"
     fi
 
-    local lp="${TNL_DEF_FSERVER_PORT:-6000}"
+    local lp="${TNL_DEF_FSERVER_PORT:-9000}"
     local remote="${TNL_REMOTE:-ubu}"
-    local ssh_opt="-q -o ConnectTimeout=5"
     local cf_log="$HOME/.cloudflared.log"
     local ip=$(mylan)
 
@@ -111,6 +110,10 @@ fshare() {
 
         "cld2all")
             _fshare_start_remote "$dir" "$lp" "$remote" || return 1
+            pkill -f "socat.*TCP-LISTEN:$lp" 2>/dev/null
+            ssh -T -o ConnectTimeout=5 -f -N -L "$lp:127.0.0.1:$lp" "$remote"
+            socat TCP-LISTEN:"$lp",bind="$ip",fork,reuseaddr TCP:127.0.0.1:"$lp" &
+            echo -e "  ${C_GREEN}✓ LAN:${C_RESET} http://$ip:$lp"
             echo -n "  Starting oracle tunnel"
             local rem_url
             rem_url=$(ssh -T -o ConnectTimeout=5 "$remote" "
@@ -123,10 +126,6 @@ fshare() {
                 done
             " 2>/dev/null | tr -d '\r')
             echo ""
-            pkill -f "socat.*TCP-LISTEN:$lp" 2>/dev/null
-            ssh -T -o ConnectTimeout=5 -f -N -L "$lp:127.0.0.1:$lp" "$remote"
-            socat TCP-LISTEN:"$lp",bind="$ip",fork,reuseaddr TCP:127.0.0.1:"$lp" &
-            echo -e "  ${C_GREEN}✓ LAN:${C_RESET} http://$ip:$lp"
             [ -n "$rem_url" ] && echo -e "  ${C_GREEN}✓ NET:${C_RESET} ${B_MAGENTA}$rem_url${C_RESET}" \
                               || echo -e "  ${C_YELLOW}⚠ NET tunnel starting... check tnl st${C_RESET}" ;;
 
@@ -151,16 +150,17 @@ fshare() {
 _fshare_start_local() {
     local dir="$1" lp="$2" ip="$3"
     pkill -f "http.server $lp" 2>/dev/null; sleep 0.3
-    ( cd "$dir" && python -m http.server "$lp" > /dev/null 2>&1 ) &
+    ( cd "$dir" && python3 -m http.server "$lp" > /dev/null 2>&1 ) &
     echo -e "  ${C_GREEN}✓ LOCAL:${C_RESET} http://127.0.0.1:$lp"
     [ "$ip" != "127.0.0.1" ] && echo -e "  ${C_DIM}LAN:${C_RESET}   http://$ip:$lp"
 }
 
 _fshare_start_remote() {
     local dir="$1" lp="$2" remote="$3"
+    local escaped_dir; escaped_dir=$(printf '%q' "$dir")
     echo -e "  Starting oracle file server..."
     ssh -T -o ConnectTimeout=5 "$remote" \
-        "fuser -k ${lp}/tcp 2>/dev/null; cd $dir && nohup python3 -m http.server $lp > /dev/null 2>&1 &" \
+        "fuser -k ${lp}/tcp 2>/dev/null; cd ${escaped_dir} && nohup python3 -m http.server ${lp} > /dev/null 2>&1 &" \
         2>/dev/null
     if [ $? -ne 0 ]; then
         echo -e "  ${C_RED}✗ Cannot reach oracle${C_RESET}"; return 1
@@ -190,11 +190,11 @@ _fshare_wait_cf() {
 _fshare_pick_remote_folder() {
     local target_var=$1
     local remote="${TNL_REMOTE:-ubu}"
-    local ssh_opt="-q -o ConnectTimeout=5"
+    local ssh_opt; ssh_opt=(-T -o ConnectTimeout=5)
 
     echo -e "${C_CYAN}[FSHARE]${C_RESET} Fetching oracle folders..." >&2
     local dirs_raw
-    dirs_raw=$(ssh $ssh_opt "$remote" \
+    dirs_raw=$(ssh "${ssh_opt[@]}" "$remote" \
         "find ~ -maxdepth 2 -mindepth 1 -type d 2>/dev/null | sort" 2>/dev/null)
 
     if [ -z "$dirs_raw" ]; then
@@ -209,9 +209,8 @@ _fshare_pick_remote_folder() {
     done <<< "$dirs_raw"
 
     local choice; _smart_select 1 $((i-1)) 1 "Pick folder" choice || return 1
-    if [ "$CURRENT_SHELL" = "zsh" ]; then
-        eval "$target_var=\"${dirs[$choice]}\""
-    else
-        eval "$target_var=\"${dirs[$((choice-1))]}\""
-    fi
+    local _val
+    if [ "$CURRENT_SHELL" = "zsh" ]; then _val="${dirs[$choice]}"
+    else _val="${dirs[$((choice-1))]}"; fi
+    eval "$target_var=\$_val"
 }

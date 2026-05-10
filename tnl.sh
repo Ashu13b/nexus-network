@@ -2,20 +2,29 @@
 
 tnl() {
   local cmd="$1"; local arg2="$2"; local ip=$(mylan); local remote="${TNL_REMOTE:-ubu}"
-  local cf_log="$HOME/.cloudflared.log"; local rem_cf_log="/home/ubuntu/cf.log"
-  local ssh_opt="-T -o ConnectTimeout=5"
+  local cf_log="$HOME/.cloudflared.log"
+  local ssh_opt; ssh_opt=(-T -o ConnectTimeout=5)
   local width=${COLUMNS:-$(tput cols 2>/dev/null || echo 40)}
 
   case "$cmd" in
     "st")
-      # --- 1. PROBE STATE ---
-      local r_ports_raw=$(ssh -q "$remote" "ss -tlnp 2>/dev/null || lsof -i -P -n | grep LISTEN" 2>/dev/null)
+      # --- 1. PROBE STATE (single oracle SSH call) ---
+      local oracle_raw
+      oracle_raw=$(ssh -q "$remote" '
+          ss -tlnp 2>/dev/null || lsof -i -P -n | grep LISTEN
+          printf "\n---NEXUS_CF_PID---\n"
+          pgrep -f "cloudflared tunnel" 2>/dev/null | head -1
+          printf "\n---NEXUS_CF_URL---\n"
+          grep -oE "https://[a-z0-9-]+\.trycloudflare\.com" ~/cf.log 2>/dev/null | tail -1
+      ' 2>/dev/null)
+      local r_ports_raw; r_ports_raw=$(printf '%s\n' "$oracle_raw" | awk '/---NEXUS_CF_PID---/{exit}1')
+      local r_cf_active; r_cf_active=$(printf '%s\n' "$oracle_raw" | sed -n '/---NEXUS_CF_PID---/,/---NEXUS_CF_URL---/{/---NEXUS/!p}' | grep -v '^$' | head -1)
+      local r_cf_url; r_cf_url=$(printf '%s\n' "$oracle_raw" | sed -n '/---NEXUS_CF_URL---/,$p' | grep -v '^---' | grep -v '^$' | head -1)
       # Filter to user-space ports only (>1023 — skip SSH/DNS/RPC noise)
-      local r_ports=$(echo "$r_ports_raw" | grep -oE ':[0-9]+' | tr -d ':' | sort -un \
+      local r_ports; r_ports=$(printf '%s\n' "$r_ports_raw" | grep -oE ':[0-9]+' | tr -d ':' | sort -un \
         | awk '$1+0 > 1023' | tr '\n' ' ' | sed 's/ $//')
-      local l_ports=$(list_local_ports)
-      local local_ps=$(ps -ef | grep -v grep)
-      local r_cf_active=$(ssh -q "$remote" "pgrep -f 'cloudflared tunnel'" 2>/dev/null)
+      local l_ports; l_ports=$(list_local_ports)
+      local local_ps; local_ps=$(ps -ef | grep -v grep)
       local lan_ok=""; echo "$local_ps" | grep -q "socat" && lan_ok="1"
       local net_ok=""; [ -n "$r_cf_active" ] && net_ok="1"
       echo "$local_ps" | grep -q "cloudflared" && net_ok="1"
@@ -83,9 +92,8 @@ tnl() {
 
       if [ -n "$r_cf_active" ]; then
         [ $found -ne 0 ] && printf "  ${C_DIM}──────────────────────────${C_RESET}\n"
-        local u=$(ssh -q "$remote" "grep -oE 'https://.*\.trycloudflare\.com' ~/cf.log 2>/dev/null | tail -1")
         printf "  %b▸ CLD2NET %b Oracle → Global\n  %b  └─%b %s\n" \
-          "${B_BLUE}" "${C_RESET}" "${C_DIM}" "${C_RESET}" "${u:-[active]}"
+          "${B_BLUE}" "${C_RESET}" "${C_DIM}" "${C_RESET}" "${r_cf_url:-[active]}"
         found=1
       fi
 
@@ -115,7 +123,7 @@ tnl() {
       local rp; [ -z "$arg2" ] && pick_port_oracle rp || rp="$arg2"; [ -z "$rp" ] && return
       local lp; _read_input "Local port? [$rp]: " lp; lp="${lp:-$rp}"
       echo -e "${C_CYAN}[CLD2LCL]${C_RESET} Oracle:$rp ➔ Local:$lp"
-      ssh $ssh_opt -f -N -L "$lp:127.0.0.1:$rp" "$remote"
+      ssh "${ssh_opt[@]}" -f -N -L "$lp:127.0.0.1:$rp" "$remote"
       echo -e "${C_GREEN}✓ Link: http://127.0.0.1:$lp${C_RESET}" ;;
 
     "lcl2lan")
@@ -148,7 +156,7 @@ tnl() {
       local rp; [ -z "$arg2" ] && pick_port_oracle rp || rp="$arg2"; [ -z "$rp" ] && return
       local lp; _read_input "Local port? [$rp]: " lp; lp="${lp:-$rp}"; kill_port "$lp"
       echo -e "${C_CYAN}[CLD2ALL]${C_RESET} Oracle:$rp ➔ LAN + Internet"
-      ssh $ssh_opt -f -N -L "$lp:127.0.0.1:$rp" "$remote"
+      ssh "${ssh_opt[@]}" -f -N -L "$lp:127.0.0.1:$rp" "$remote"
       socat TCP-LISTEN:"$lp",bind="$ip",fork,reuseaddr TCP:127.0.0.1:"$lp" &
       echo -e "  ${C_GREEN}✓ LAN:${C_RESET} http://$ip:$lp"
       pkill -f "cloudflared tunnel" 2>/dev/null
@@ -169,13 +177,13 @@ tnl() {
       local lp; _read_input "Local share port? [$rp]: " lp; lp="${lp:-$rp}"; kill_port "$lp"
       echo -e "\n${C_CYAN}[BRIDGE]${C_RESET} Oracle:$rp ➔ LAN: http://$ip:$lp"
       socat TCP-LISTEN:"$lp",bind="$ip",fork,reuseaddr TCP:127.0.0.1:"$lp" &
-      ssh $ssh_opt -f -N -L "$lp:127.0.0.1:$rp" "$remote" ;;
+      ssh "${ssh_opt[@]}" -f -N -L "$lp:127.0.0.1:$rp" "$remote" ;;
 
     "deploy")
       style_header "REMOTE SERVER DEPLOYMENT"
       local target_ip; _read_input "Enter Target IP (Tablet): " target_ip
       [ -z "$target_ip" ] && return
-      local target_port="${arg2:-6000}"
+      local target_port="${arg2:-9000}"
       echo -e "${C_CYAN}[ACTION]${C_RESET} Deploying File Server to $target_ip..."
       ssh -p 8022 "$target_ip" "nohup python3 -m http.server $target_port > /dev/null 2>&1 &"
       if [ $? -eq 0 ]; then
@@ -190,7 +198,7 @@ tnl() {
     "kx"|"x")
       local p="$arg2"; [ -z "$p" ] && pick_pipeline_port p; [ -z "$p" ] && return 1
       if [[ "$p" == cf_* ]]; then
-        pkill -f "cloudflared tunnel"; ssh $ssh_opt "$remote" "pkill -f 'cloudflared tunnel'"
+        pkill -f "cloudflared tunnel"; ssh "${ssh_opt[@]}" "$remote" "pkill -f 'cloudflared tunnel'"
         echo -e "${C_RED}[KILLED]${C_RESET} Cloudflare tunnel stopped."
       else
         # Check if this port belongs to a named SSH tunnel (kill by host, not port)
@@ -217,7 +225,7 @@ tnl() {
 
     "xall")
       pkill -9 -f "socat|http.server|ssh -f -N|cloudflared tunnel"
-      ssh $ssh_opt "$remote" "pkill -9 -f 'cloudflared tunnel'" 2>/dev/null
+      ssh "${ssh_opt[@]}" "$remote" "pkill -9 -f 'cloudflared tunnel'" 2>/dev/null
       echo -e "${C_RED}[KILL ALL]${C_RESET} Everything stopped." ;;
 
     *)
