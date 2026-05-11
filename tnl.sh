@@ -196,7 +196,7 @@ tnl() {
     "fserver"|"fshare")
       echo -e "${C_YELLOW}⚠ Use 'fshare' directly — see: fshare help${C_RESET}" ;;
 
-    "kx"|"x")
+    "x")
       local p="$arg2"; [ -z "$p" ] && pick_pipeline_port p; [ -z "$p" ] && return 1
       if [[ "$p" == cf_* ]]; then
         pkill -f "cloudflared tunnel"; ssh "${ssh_opt[@]}" "$remote" "pkill -x cloudflared"
@@ -224,6 +224,12 @@ tnl() {
         fi
       fi ;;
 
+    "xst")
+      tnl st
+      printf "\n"
+      local p; pick_pipeline_port p || return 0
+      tnl x "$p" ;;
+
     "xall")
       pkill -9 -f "socat|http.server|ssh -f -N|cloudflared tunnel"
       ssh "${ssh_opt[@]}" "$remote" "pkill -9 -x cloudflared" 2>/dev/null
@@ -241,7 +247,8 @@ tnl() {
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "cld2all"  "oracle port → WiFi + internet"
       printf "\n  ${C_DIM}SYSTEM (tnl only)${C_RESET}\n"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl st"   "network dashboard"
-      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl kx"   "smart kill"
+      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl x"    "smart kill"
+      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xst"  "status → pick → kill"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xall" "kill everything"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl deploy" "deploy server to tablet"
       printf "\n  ${C_DIM}FILE SHARING${C_RESET}\n"
