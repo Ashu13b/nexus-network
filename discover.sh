@@ -147,8 +147,10 @@ pick_pipeline_port() {
     local target_var=$1
     local ports=(); local descs=()
 
+    local _protected=" ${TNL_PROTECTED_PORTS:-} "
     while IFS='|' read -r type lport rport desc url; do
         [ -z "$type" ] && continue
+        echo "$_protected" | grep -qw "$lport" && continue
         ports+=("$lport")
         descs+=("$desc ($lport)")
     done <<< "$(get_active_pipelines)"
