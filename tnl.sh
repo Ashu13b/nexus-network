@@ -13,9 +13,15 @@ tnl() {
       oracle_raw=$(ssh -q "$remote" '
           ss -tlnp 2>/dev/null || lsof -i -P -n | grep LISTEN
           printf "\n---NEXUS_CF_PID---\n"
-          pgrep -x cloudflared 2>/dev/null | head -1
+          for _p in /proc/[0-9]*/exe; do
+              _t=$(readlink "$_p" 2>/dev/null)
+              case "$_t" in *cloudflare*) echo "${_p%/exe}" | grep -oE "[0-9]+$"; break;; esac
+          done
           printf "\n---NEXUS_CF_URL---\n"
-          _cf_pid=$(pgrep -x cloudflared 2>/dev/null | head -1)
+          _cf_pid=$(for _p in /proc/[0-9]*/exe; do
+              _t=$(readlink "$_p" 2>/dev/null)
+              case "$_t" in *cloudflare*) echo "${_p%/exe}" | grep -oE "[0-9]+$"; break;; esac
+          done)
           if [ -n "$_cf_pid" ]; then
               _cf_port=$(ss -tlnp 2>/dev/null | grep "pid=$_cf_pid," | grep -oE ":[0-9]+" | tr -d ":" | head -1)
               [ -n "$_cf_port" ] && curl -s --max-time 2 "http://localhost:$_cf_port/metrics" 2>/dev/null | grep -oE "https://[a-z0-9-]+\.trycloudflare\.com" | head -1
@@ -207,7 +213,10 @@ tnl() {
         local _oracle_raw; _oracle_raw=$(ssh "${ssh_opt[@]}" "$remote" '
             ss -tlnp 2>/dev/null | grep -oE ":[0-9]+" | tr -d ":" | sort -un
             echo "---CF---"
-            pgrep -x cloudflared 2>/dev/null | head -1
+            for _p in /proc/[0-9]*/exe; do
+                _t=$(readlink "$_p" 2>/dev/null)
+                case "$_t" in *cloudflare*) echo "${_p%/exe}" | grep -oE "[0-9]+$"; break;; esac
+            done
         ' 2>/dev/null)
         local _r_ports; _r_ports=$(printf '%s\n' "$_oracle_raw" | awk '/---CF---/{exit}1' | awk '$0+0>1023' | tr '\n' ' ')
         local _ocf; _ocf=$(printf '%s\n' "$_oracle_raw" | sed -n '/---CF---/,$p' | grep -v '^---' | grep -v '^$' | head -1)
@@ -272,7 +281,15 @@ tnl() {
       fi ;;
 
     "xcld")
-      ssh "${ssh_opt[@]}" "$remote" "systemctl stop cloudflared 2>/dev/null; pkill -x cloudflared 2>/dev/null; true" 2>/dev/null
+      ssh "${ssh_opt[@]}" "$remote" '
+          systemctl stop cloudflared 2>/dev/null
+          for _p in /proc/[0-9]*/exe; do
+              _t=$(readlink "$_p" 2>/dev/null)
+              case "$_t" in *cloudflare*)
+                  kill "$(echo "$_p" | grep -oE "[0-9]+$")" 2>/dev/null
+              ;; esac
+          done
+      ' 2>/dev/null
       echo -e "${C_RED}[KILLED]${C_RESET} Oracle cloudflare stopped." ;;
 
     "xall")
