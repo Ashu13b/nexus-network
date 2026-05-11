@@ -77,7 +77,7 @@ def get_cmd(pid):
             return f.read().replace(b'\0', b' ').decode(errors='ignore')
     except: return ''
 
-pipes = []
+pipes = []  # (pid, record)
 lan_ip = os.environ.get('LAN_IP', '127.0.0.1')
 
 # Parse ~/.ssh/config — capture both local AND remote port from LocalForward
@@ -102,23 +102,24 @@ for pid in os.listdir('/proc'):
     if not pid.isdigit(): continue
     cmd = get_cmd(pid)
     if not cmd: continue
+    n = int(pid)
 
     # 1. Socat Bridges (Phone -> LAN)
     if 'socat' in cmd and 'TCP-LISTEN' in cmd:
         m = re.search(r'TCP-LISTEN:(\d+)', cmd)
-        if m: pipes.append(f'SOCAT|{m.group(1)}||Phone:{m.group(1)} ➔ WiFi|http://{lan_ip}:{m.group(1)}')
+        if m: pipes.append((n, f'SOCAT|{m.group(1)}||Phone:{m.group(1)} ➔ WiFi|http://{lan_ip}:{m.group(1)}'))
 
     # 2. Cloudflare Tunnels (Phone -> Global)
     if 'cloudflared' in cmd and '--url' in cmd:
         m = re.search(r'http://[a-zA-Z0-9.-]+:(\d+)', cmd)
-        if m: pipes.append(f'CF_L|{m.group(1)}||Phone:{m.group(1)} ➔ Global|[LOG_URL]')
+        if m: pipes.append((n, f'CF_L|{m.group(1)}||Phone:{m.group(1)} ➔ Global|[LOG_URL]'))
 
     # 3. Python File Servers (local only)
     if 'http.server' in cmd and 'ssh' not in cmd:
         parts = cmd.split()
         if parts:
             port = parts[-1]
-            if port.isdigit(): pipes.append(f'HTTP|{port}||File Server:{port}|http://{lan_ip}:{port}')
+            if port.isdigit(): pipes.append((n, f'HTTP|{port}||File Server:{port}|http://{lan_ip}:{port}'))
 
     # 4. SSH Tunnels — local and remote ports may differ (e.g. LocalForward 5000 host:8005)
     if cmd.strip().startswith('ssh ') and 'ssh-' not in cmd:
@@ -128,10 +129,15 @@ for pid in os.listdir('/proc'):
             if host in ssh_forwards:
                 lp, rp = ssh_forwards[host]
                 label = f'{host}  (oracle:{rp} → phone:{lp})' if rp != lp else host
-                pipes.append(f'CLD2LCL|{lp}|{rp}|{label}|http://127.0.0.1:{lp}')
+                pipes.append((n, f'CLD2LCL|{lp}|{rp}|{label}|http://127.0.0.1:{lp}'))
 
-for p in sorted(list(set(pipes))):
-    print(p)
+# Deduplicate by record, keep highest PID, sort newest first
+seen = {}
+for pid, rec in pipes:
+    if rec not in seen or pid > seen[rec]:
+        seen[rec] = pid
+for rec, _ in sorted(seen.items(), key=lambda x: x[1], reverse=True):
+    print(rec)
 " 2>/dev/null
 }
 

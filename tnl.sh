@@ -225,9 +225,7 @@ tnl() {
         if [ -n "$ssh_host" ]; then
           pkill -f "ssh $ssh_host" 2>/dev/null
           ssh -O exit "$ssh_host" 2>/dev/null
-          # Kill oracle-side service on the remote port
-          [ -n "$ssh_rport" ] && ssh -q "$remote" "fuser -k ${ssh_rport}/tcp 2>/dev/null"
-          echo -e "${C_RED}[KILLED]${C_RESET} ${C_BOLD}$ssh_host${C_RESET} — phone tunnel + oracle:$ssh_rport stopped."
+          echo -e "${C_RED}[KILLED]${C_RESET} ${C_BOLD}$ssh_host${C_RESET} — phone tunnel closed (oracle:$ssh_rport untouched)."
         else
           kill_port "$p"
           echo -e "${C_RED}[KILLED]${C_RESET} Port $p stopped."
