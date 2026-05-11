@@ -202,15 +202,39 @@ tnl() {
       echo -e "${C_RED}[KILLED]${C_RESET} Cloudflare stopped (local + oracle)." ;;
 
     "x")
-      local p="$arg2"; [ -z "$p" ] && pick_pipeline_port p; [ -z "$p" ] && return 1
+      local p="$arg2"
+      if [ -z "$p" ]; then
+        # Build combined picker: local pipelines + oracle CF if running
+        local _ports=() _labels=() _protected=" ${TNL_PROTECTED_PORTS:-} "
+        while IFS='|' read -r _t _lp _rp _desc _url; do
+          [ -z "$_t" ] && continue
+          echo "$_protected" | grep -qw "$_lp" && continue
+          _ports+=("$_lp"); _labels+=("$_desc ($_lp)")
+        done <<< "$(get_active_pipelines)"
+        local _ocf; _ocf=$(ssh "${ssh_opt[@]}" "$remote" "pgrep -x cloudflared" 2>/dev/null)
+        [ -n "$_ocf" ] && { _ports+=("cf_oracle"); _labels+=("CLD2NET — Oracle cloudflare"); }
+        local _count=${#_ports[@]}
+        if [ $_count -eq 0 ]; then echo -e "${C_DIM}Nothing to kill.${C_RESET}"; return 0; fi
+        if [ $_count -eq 1 ]; then
+          if [ "$CURRENT_SHELL" = "zsh" ]; then p="${_ports[1]}"; else p="${_ports[0]}"; fi
+        else
+          style_header "KILL WHAT?" >&2
+          for ((i=1; i<=$_count; i++)); do
+            if [ "$CURRENT_SHELL" = "zsh" ]; then printf "  %d) %s\n" "$i" "${_labels[$i]}" >&2
+            else printf "  %d) %s\n" "$i" "${_labels[$((i-1))]}" >&2; fi
+          done
+          local _ch; _smart_select 1 $_count 1 "Kill which?" _ch || return 0
+          if [ "$CURRENT_SHELL" = "zsh" ]; then p="${_ports[$_ch]}"; else p="${_ports[$((${_ch}-1))]}"; fi
+        fi
+      fi
       # Guard against killing protected ports
       if echo " ${TNL_PROTECTED_PORTS:-} " | grep -qw "$p"; then
         local ans; _read_input "${C_YELLOW}⚠ Port $p is protected. Kill anyway? (y/n): ${C_RESET}" ans
         [[ "$ans" != "y" ]] && return 0
       fi
       if [[ "$p" == cf_* ]]; then
-        pkill -f "cloudflared tunnel"; ssh "${ssh_opt[@]}" "$remote" "pkill -x cloudflared"
-        echo -e "${C_RED}[KILLED]${C_RESET} Cloudflare tunnel stopped."
+        pkill -f "cloudflared tunnel" 2>/dev/null; ssh "${ssh_opt[@]}" "$remote" "pkill -x cloudflared" 2>/dev/null
+        echo -e "${C_RED}[KILLED]${C_RESET} Cloudflare tunnel stopped (local + oracle)."
       else
         # Check if this port belongs to a named SSH tunnel (kill by host, not port)
         local ssh_host="" ssh_rport=""
