@@ -13,7 +13,7 @@ tnl() {
       oracle_raw=$(ssh -q "$remote" '
           ss -tlnp 2>/dev/null || lsof -i -P -n | grep LISTEN
           printf "\n---NEXUS_CF_PID---\n"
-          pgrep -f "cloudflared tunnel" 2>/dev/null | head -1
+          pgrep -x cloudflared 2>/dev/null | head -1
           printf "\n---NEXUS_CF_URL---\n"
           grep -oE "https://[^ ]+\.trycloudflare\.com" ~/cf.log ~/.cloudflared/cloudflared.log 2>/dev/null | tail -1 \
               || journalctl _COMM=cloudflared --no-pager -n 200 2>/dev/null | grep -oE "https://[^ ]+\.trycloudflare\.com" | tail -1
@@ -103,7 +103,7 @@ tnl() {
     "cld2net")
       local rp="$arg2"; [ -z "$rp" ] && pick_port_oracle rp; [ -z "$rp" ] && return
       echo -e "${C_CYAN}[CLD2NET]${C_RESET} Starting Global Tunnel on $remote..."
-      ssh -t "$remote" "pkill -f 'cloudflared tunnel' 2>/dev/null; rm -f ~/cf.log; nohup cloudflared tunnel --url http://localhost:$rp > ~/cf.log 2>&1 & sleep 4; grep -oE 'https://[^ ]+\.trycloudflare\.com' ~/cf.log | tail -1" ;;
+      ssh -t "$remote" "pkill -x cloudflared 2>/dev/null; rm -f ~/cf.log; nohup cloudflared tunnel --url http://localhost:$rp > ~/cf.log 2>&1 & sleep 4; grep -oE 'https://[^ ]+\.trycloudflare\.com' ~/cf.log | tail -1" ;;
 
     "lcl2net"|"public")
       local lp="$arg2"
@@ -199,7 +199,7 @@ tnl() {
     "kx"|"x")
       local p="$arg2"; [ -z "$p" ] && pick_pipeline_port p; [ -z "$p" ] && return 1
       if [[ "$p" == cf_* ]]; then
-        pkill -f "cloudflared tunnel"; ssh "${ssh_opt[@]}" "$remote" "pkill -f 'cloudflared tunnel'"
+        pkill -f "cloudflared tunnel"; ssh "${ssh_opt[@]}" "$remote" "pkill -x cloudflared"
         echo -e "${C_RED}[KILLED]${C_RESET} Cloudflare tunnel stopped."
       else
         # Check if this port belongs to a named SSH tunnel (kill by host, not port)
@@ -226,7 +226,7 @@ tnl() {
 
     "xall")
       pkill -9 -f "socat|http.server|ssh -f -N|cloudflared tunnel"
-      ssh "${ssh_opt[@]}" "$remote" "pkill -9 -f 'cloudflared tunnel'" 2>/dev/null
+      ssh "${ssh_opt[@]}" "$remote" "pkill -9 -x cloudflared" 2>/dev/null
       echo -e "${C_RED}[KILL ALL]${C_RESET} Everything stopped." ;;
 
     *)

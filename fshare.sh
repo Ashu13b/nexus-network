@@ -96,7 +96,7 @@ fshare() {
             echo -n "  Starting oracle tunnel"
             local rem_url
             rem_url=$(ssh -T -o ConnectTimeout=5 "$remote" "
-                pkill -f 'cloudflared tunnel' 2>/dev/null
+                pkill -x cloudflared 2>/dev/null
                 rm -f ~/cf.log; nohup cloudflared tunnel --url http://localhost:$lp > ~/cf.log 2>&1 &
                 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
                     sleep 1
@@ -117,7 +117,7 @@ fshare() {
             echo -n "  Starting oracle tunnel"
             local rem_url
             rem_url=$(ssh -T -o ConnectTimeout=5 "$remote" "
-                pkill -f 'cloudflared tunnel' 2>/dev/null
+                pkill -x cloudflared 2>/dev/null
                 rm -f ~/cf.log; nohup cloudflared tunnel --url http://localhost:$lp > ~/cf.log 2>&1 &
                 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
                     sleep 1
