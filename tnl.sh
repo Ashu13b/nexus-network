@@ -15,7 +15,11 @@ tnl() {
           printf "\n---NEXUS_CF_PID---\n"
           pgrep -x cloudflared 2>/dev/null | head -1
           printf "\n---NEXUS_CF_URL---\n"
-          curl -s --max-time 2 http://localhost:2000/metrics 2>/dev/null | grep -oE "https://[a-z0-9-]+\.trycloudflare\.com" | head -1
+          _cf_pid=$(pgrep -x cloudflared 2>/dev/null | head -1)
+          if [ -n "$_cf_pid" ]; then
+              _cf_port=$(ss -tlnp 2>/dev/null | grep "pid=$_cf_pid," | grep -oE ":[0-9]+" | tr -d ":" | head -1)
+              [ -n "$_cf_port" ] && curl -s --max-time 2 "http://localhost:$_cf_port/metrics" 2>/dev/null | grep -oE "https://[a-z0-9-]+\.trycloudflare\.com" | head -1
+          fi
       ' 2>/dev/null)
       local r_ports_raw; r_ports_raw=$(printf '%s\n' "$oracle_raw" | awk '/---NEXUS_CF_PID---/{exit}1')
       local r_cf_active; r_cf_active=$(printf '%s\n' "$oracle_raw" | sed -n '/---NEXUS_CF_PID---/,/---NEXUS_CF_URL---/{/---NEXUS/!p}' | grep -v '^$' | head -1)
@@ -268,7 +272,7 @@ tnl() {
       fi ;;
 
     "xcld")
-      ssh "${ssh_opt[@]}" "$remote" "pkill -x cloudflared" 2>/dev/null
+      ssh "${ssh_opt[@]}" "$remote" "systemctl stop cloudflared 2>/dev/null; pkill -x cloudflared 2>/dev/null; true" 2>/dev/null
       echo -e "${C_RED}[KILLED]${C_RESET} Oracle cloudflare stopped." ;;
 
     "xall")
