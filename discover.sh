@@ -145,7 +145,7 @@ for rec, _ in sorted(seen.items(), key=lambda x: x[1], reverse=True):
 kill_port() {
     local p="$1"
     [[ "$p" =~ ^[0-9]+$ ]] || return 1
-    fuser -k "${p}/tcp" 2>/dev/null || pgrep -f ":${p}" | xargs kill -9 2>/dev/null
+    fuser -k "${p}/tcp" 2>/dev/null
 }
 
 # ── Pipeline Port Picker ──

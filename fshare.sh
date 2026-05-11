@@ -170,7 +170,7 @@ _fshare_start_remote() {
 
 _fshare_wait_cf() {
     local lp="$1" cf_log="$2"
-    pkill -f "cloudflared tunnel" 2>/dev/null
+    pkill -x cloudflared 2>/dev/null
     rm -f "$cf_log"; touch "$cf_log"
     cloudflared tunnel --url "http://127.0.0.1:$lp" > "$cf_log" 2>&1 &
     local t=15

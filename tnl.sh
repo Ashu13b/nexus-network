@@ -107,7 +107,7 @@ tnl() {
       local lp="$arg2"
       [ -z "$lp" ] && { style_header "LOCAL PORTS"; list_local_ports | tr ' ' '\n'; _read_input "Port: " lp; }
       [ -z "$lp" ] && return
-      pkill -f "cloudflared tunnel" 2>/dev/null
+      pkill -x cloudflared 2>/dev/null
       echo -e "${C_CYAN}[LCL2NET]${C_RESET} Starting Local Tunnel..."; rm -f "$cf_log"; touch "$cf_log"
       cloudflared tunnel --url "http://127.0.0.1:$lp" > "$cf_log" 2>&1 &
       local t=15
@@ -137,7 +137,7 @@ tnl() {
       [ -z "$lp" ] && { style_header "LOCAL PORTS"; list_local_ports | tr ' ' '\n'; _read_input "Port: " lp; }
       [ -z "$lp" ] && return
       pkill -f "socat.*TCP-LISTEN:$lp" 2>/dev/null
-      pkill -f "cloudflared tunnel" 2>/dev/null
+      pkill -x cloudflared 2>/dev/null
       socat TCP-LISTEN:"$lp",bind="$ip",fork,reuseaddr TCP:127.0.0.1:"$lp" &
       rm -f "$cf_log"; touch "$cf_log"
       cloudflared tunnel --url "http://127.0.0.1:$lp" > "$cf_log" 2>&1 &
@@ -158,7 +158,7 @@ tnl() {
       ssh "${ssh_opt[@]}" -f -N -L "$lp:127.0.0.1:$rp" "$remote"
       socat TCP-LISTEN:"$lp",bind="$ip",fork,reuseaddr TCP:127.0.0.1:"$lp" &
       echo -e "  ${C_GREEN}✓ LAN:${C_RESET} http://$ip:$lp"
-      pkill -f "cloudflared tunnel" 2>/dev/null
+      pkill -x cloudflared 2>/dev/null
       rm -f "$cf_log"; touch "$cf_log"
       cloudflared tunnel --url "http://127.0.0.1:$lp" > "$cf_log" 2>&1 &
       local t=15; echo -n "  Waiting for public URL"
@@ -252,7 +252,8 @@ tnl() {
         [[ "$ans" != "y" ]] && return 0
       fi
       if [[ "$p" == cf_* ]]; then
-        pkill -f "cloudflared tunnel" 2>/dev/null; ssh "${ssh_opt[@]}" "$remote" "pkill -x cloudflared" 2>/dev/null
+        pkill -x cloudflared 2>/dev/null
+        ssh "${ssh_opt[@]}" "$remote" "bash ~/nexus_cf.sh kill" 2>/dev/null
         echo -e "${C_RED}[KILLED]${C_RESET} Cloudflare tunnel stopped (local + oracle)."
       else
         # Check if this port belongs to a named SSH tunnel (kill by host, not port)
@@ -266,7 +267,7 @@ tnl() {
         done <<< "$(get_active_pipelines)"
 
         if [ -n "$ssh_host" ]; then
-          pkill -f "ssh $ssh_host" 2>/dev/null
+          pkill -f "ssh.*-f.*-N.*-L.*$ssh_host" 2>/dev/null
           ssh -O exit "$ssh_host" 2>/dev/null
           echo -e "${C_RED}[KILLED]${C_RESET} ${C_BOLD}$ssh_host${C_RESET} — phone tunnel closed (oracle:$ssh_rport untouched)."
         else
@@ -280,7 +281,10 @@ tnl() {
       echo -e "${C_RED}[KILLED]${C_RESET} Oracle cloudflare stopped." ;;
 
     "xall")
-      pkill -9 -f "socat|http.server|ssh -f -N|cloudflared tunnel" 2>/dev/null
+      pkill -f "socat TCP-LISTEN" 2>/dev/null
+      pkill -f "python3.*http.server" 2>/dev/null
+      pkill -f "ssh.*-f.*-N.*-L" 2>/dev/null
+      pkill -x cloudflared 2>/dev/null
       echo -e "${C_RED}[KILL ALL]${C_RESET} Local tunnels stopped (oracle untouched)." ;;
 
     *)
