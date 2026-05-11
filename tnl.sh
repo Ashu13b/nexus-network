@@ -15,7 +15,8 @@ tnl() {
           printf "\n---NEXUS_CF_PID---\n"
           pgrep -f "cloudflared tunnel" 2>/dev/null | head -1
           printf "\n---NEXUS_CF_URL---\n"
-          grep -oE "https://[^ ]+\.trycloudflare\.com" ~/cf.log 2>/dev/null | tail -1
+          grep -oE "https://[^ ]+\.trycloudflare\.com" ~/cf.log ~/.cloudflared/cloudflared.log 2>/dev/null | tail -1 \
+              || journalctl _COMM=cloudflared --no-pager -n 200 2>/dev/null | grep -oE "https://[^ ]+\.trycloudflare\.com" | tail -1
       ' 2>/dev/null)
       local r_ports_raw; r_ports_raw=$(printf '%s\n' "$oracle_raw" | awk '/---NEXUS_CF_PID---/{exit}1')
       local r_cf_active; r_cf_active=$(printf '%s\n' "$oracle_raw" | sed -n '/---NEXUS_CF_PID---/,/---NEXUS_CF_URL---/{/---NEXUS/!p}' | grep -v '^$' | head -1)
@@ -102,7 +103,7 @@ tnl() {
     "cld2net")
       local rp="$arg2"; [ -z "$rp" ] && pick_port_oracle rp; [ -z "$rp" ] && return
       echo -e "${C_CYAN}[CLD2NET]${C_RESET} Starting Global Tunnel on $remote..."
-      ssh -t "$remote" "pkill -f 'cloudflared tunnel'; cloudflared tunnel --url http://localhost:$rp > ~/cf.log 2>&1 & sleep 2; grep -oE 'https://.*\.trycloudflare\.com' ~/cf.log" ;;
+      ssh -t "$remote" "pkill -f 'cloudflared tunnel' 2>/dev/null; rm -f ~/cf.log; nohup cloudflared tunnel --url http://localhost:$rp > ~/cf.log 2>&1 & sleep 4; grep -oE 'https://[^ ]+\.trycloudflare\.com' ~/cf.log | tail -1" ;;
 
     "lcl2net"|"public")
       local lp="$arg2"
