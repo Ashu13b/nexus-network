@@ -12,24 +12,13 @@ tnl() {
       local oracle_raw
       oracle_raw=$(ssh -q "$remote" '
           ss -tlnp 2>/dev/null || lsof -i -P -n | grep LISTEN
-          printf "\n---NEXUS_CF_PID---\n"
-          for _p in /proc/[0-9]*/exe; do
-              _t=$(readlink "$_p" 2>/dev/null)
-              case "$_t" in *cloudflare*) echo "${_p%/exe}" | grep -oE "[0-9]+$"; break;; esac
-          done
-          printf "\n---NEXUS_CF_URL---\n"
-          _cf_pid=$(for _p in /proc/[0-9]*/exe; do
-              _t=$(readlink "$_p" 2>/dev/null)
-              case "$_t" in *cloudflare*) echo "${_p%/exe}" | grep -oE "[0-9]+$"; break;; esac
-          done)
-          if [ -n "$_cf_pid" ]; then
-              _cf_port=$(ss -tlnp 2>/dev/null | grep "pid=$_cf_pid," | grep -oE ":[0-9]+" | tr -d ":" | head -1)
-              [ -n "$_cf_port" ] && curl -s --max-time 2 "http://localhost:$_cf_port/metrics" 2>/dev/null | grep -oE "https://[a-z0-9-]+\.trycloudflare\.com" | head -1
-          fi
+          printf "\n---NEXUS_CF---\n"
+          [ -f ~/nexus_cf.sh ] && bash ~/nexus_cf.sh || printf "\n\n"
       ' 2>/dev/null)
-      local r_ports_raw; r_ports_raw=$(printf '%s\n' "$oracle_raw" | awk '/---NEXUS_CF_PID---/{exit}1')
-      local r_cf_active; r_cf_active=$(printf '%s\n' "$oracle_raw" | sed -n '/---NEXUS_CF_PID---/,/---NEXUS_CF_URL---/{/---NEXUS/!p}' | grep -v '^$' | head -1)
-      local r_cf_url; r_cf_url=$(printf '%s\n' "$oracle_raw" | sed -n '/---NEXUS_CF_URL---/,$p' | grep -v '^---' | grep -v '^$' | head -1)
+      local r_ports_raw; r_ports_raw=$(printf '%s\n' "$oracle_raw" | awk '/---NEXUS_CF---/{exit}1')
+      local r_cf_lines; r_cf_lines=$(printf '%s\n' "$oracle_raw" | sed -n '/---NEXUS_CF---/,$p' | grep -v '^---')
+      local r_cf_active; r_cf_active=$(printf '%s\n' "$r_cf_lines" | sed '/^$/d' | head -1)
+      local r_cf_url; r_cf_url=$(printf '%s\n' "$r_cf_lines" | sed -n '2p' | tr -d '[:space:]')
       # Filter to user-space ports only (>1023 — skip SSH/DNS/RPC noise)
       local r_ports; r_ports=$(printf '%s\n' "$r_ports_raw" | grep -oE ':[0-9]+' | tr -d ':' | sort -un \
         | awk '$1+0 > 1023' | tr '\n' ' ' | sed 's/ $//')
@@ -202,6 +191,12 @@ tnl() {
         echo -e "${C_RED}✗ FAILED.${C_RESET} Make sure 'sshd' is running on the tablet."
       fi ;;
 
+    "push")
+      local script_dir; script_dir="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+      scp "$script_dir/nexus_cf.sh" "$remote:~/nexus_cf.sh" && \
+        echo -e "${C_GREEN}✓ nexus_cf.sh deployed to $remote${C_RESET}" || \
+        echo -e "${C_RED}✗ deploy failed${C_RESET}" ;;
+
     "fserver"|"fshare")
       echo -e "${C_YELLOW}⚠ Use 'fshare' directly — see: fshare help${C_RESET}" ;;
 
@@ -281,15 +276,7 @@ tnl() {
       fi ;;
 
     "xcld")
-      ssh "${ssh_opt[@]}" "$remote" '
-          systemctl stop cloudflared 2>/dev/null
-          for _p in /proc/[0-9]*/exe; do
-              _t=$(readlink "$_p" 2>/dev/null)
-              case "$_t" in *cloudflare*)
-                  kill "$(echo "$_p" | grep -oE "[0-9]+$")" 2>/dev/null
-              ;; esac
-          done
-      ' 2>/dev/null
+      ssh "${ssh_opt[@]}" "$remote" "bash ~/nexus_cf.sh kill" 2>/dev/null
       echo -e "${C_RED}[KILLED]${C_RESET} Oracle cloudflare stopped." ;;
 
     "xall")
@@ -311,6 +298,7 @@ tnl() {
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl x"    "pick & kill (local + oracle CF)"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xcld" "kill oracle cloudflare only"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xall" "kill all local tunnels (oracle untouched)"
+      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl push"   "deploy nexus_cf.sh to oracle (run once)"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl deploy" "deploy server to tablet"
       printf "\n  ${C_DIM}FILE SHARING${C_RESET}\n"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "fshare"   "share folders — see: fshare help\n" ;;
