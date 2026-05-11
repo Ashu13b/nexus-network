@@ -199,14 +199,31 @@ tnl() {
     "x")
       local p="$arg2"
       if [ -z "$p" ]; then
-        # Build combined picker: local pipelines + oracle CF if running
         local _ports=() _labels=() _protected=" ${TNL_PROTECTED_PORTS:-} "
+        # Single oracle SSH call: get ports + CF status
+        local _oracle_raw; _oracle_raw=$(ssh "${ssh_opt[@]}" "$remote" '
+            ss -tlnp 2>/dev/null | grep -oE ":[0-9]+" | tr -d ":" | sort -un | awk "$1+0>1023"
+            echo "---CF---"
+            pgrep -x cloudflared 2>/dev/null | head -1
+        ' 2>/dev/null)
+        local _r_ports; _r_ports=$(printf '%s\n' "$_oracle_raw" | awk '/---CF---/{exit}1' | tr '\n' ' ')
+        local _ocf; _ocf=$(printf '%s\n' "$_oracle_raw" | sed -n '/---CF---/,$p' | grep -v '^---' | grep -v '^$' | head -1)
+        local _l_ports; _l_ports=$(list_local_ports)
+        # Named pipelines from get_active_pipelines
         while IFS='|' read -r _t _lp _rp _desc _url; do
           [ -z "$_t" ] && continue
           echo "$_protected" | grep -qw "$_lp" && continue
           _ports+=("$_lp"); _labels+=("$_desc ($_lp)")
         done <<< "$(get_active_pipelines)"
-        local _ocf; _ocf=$(ssh "${ssh_opt[@]}" "$remote" "pgrep -x cloudflared" 2>/dev/null)
+        # Symmetry-based CLD2LCL (port on both oracle and phone, not already listed)
+        for _sp in $(echo "$_l_ports"); do
+          echo "$_protected" | grep -qw "$_sp" && continue
+          local _already=0
+          for _ep in "${_ports[@]}"; do [ "$_ep" = "$_sp" ] && _already=1 && break; done
+          [ $_already -eq 1 ] && continue
+          echo " $_r_ports " | grep -qw "$_sp" && { _ports+=("$_sp"); _labels+=("CLD2LCL — port $_sp (phone ↔ oracle)"); }
+        done
+        # Oracle cloudflare
         [ -n "$_ocf" ] && { _ports+=("cf_oracle"); _labels+=("CLD2NET — Oracle cloudflare"); }
         local _count=${#_ports[@]}
         if [ $_count -eq 0 ]; then echo -e "${C_DIM}Nothing to kill.${C_RESET}"; return 0; fi
@@ -251,16 +268,13 @@ tnl() {
         fi
       fi ;;
 
-    "xst")
-      tnl st
-      printf "\n"
-      local p; pick_pipeline_port p || return 0
-      tnl x "$p" ;;
+    "xcld")
+      ssh "${ssh_opt[@]}" "$remote" "pkill -x cloudflared" 2>/dev/null
+      echo -e "${C_RED}[KILLED]${C_RESET} Oracle cloudflare stopped." ;;
 
     "xall")
-      pkill -9 -f "socat|http.server|ssh -f -N|cloudflared tunnel"
-      ssh "${ssh_opt[@]}" "$remote" "pkill -9 -x cloudflared" 2>/dev/null
-      echo -e "${C_RED}[KILL ALL]${C_RESET} Everything stopped." ;;
+      pkill -9 -f "socat|http.server|ssh -f -N|cloudflared tunnel" 2>/dev/null
+      echo -e "${C_RED}[KILL ALL]${C_RESET} Local tunnels stopped (oracle untouched)." ;;
 
     *)
       style_header "SYMMETRIC TNL HELP"
@@ -275,8 +289,8 @@ tnl() {
       printf "\n  ${C_DIM}SYSTEM (tnl only)${C_RESET}\n"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl st"   "network dashboard"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl x"    "pick & kill (local + oracle CF)"
-      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xst"  "status → pick → kill"
-      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xall" "kill everything local"
+      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xcld" "kill oracle cloudflare only"
+      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xall" "kill all local tunnels (oracle untouched)"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl deploy" "deploy server to tablet"
       printf "\n  ${C_DIM}FILE SHARING${C_RESET}\n"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "fshare"   "share folders — see: fshare help\n" ;;
