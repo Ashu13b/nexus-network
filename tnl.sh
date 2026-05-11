@@ -15,7 +15,7 @@ tnl() {
           printf "\n---NEXUS_CF_PID---\n"
           pgrep -f "cloudflared tunnel" 2>/dev/null | head -1
           printf "\n---NEXUS_CF_URL---\n"
-          grep -oE "https://[a-z0-9-]+\.trycloudflare\.com" ~/cf.log 2>/dev/null | tail -1
+          grep -oE "https://[^ ]+\.trycloudflare\.com" ~/cf.log 2>/dev/null | tail -1
       ' 2>/dev/null)
       local r_ports_raw; r_ports_raw=$(printf '%s\n' "$oracle_raw" | awk '/---NEXUS_CF_PID---/{exit}1')
       local r_cf_active; r_cf_active=$(printf '%s\n' "$oracle_raw" | sed -n '/---NEXUS_CF_PID---/,/---NEXUS_CF_URL---/{/---NEXUS/!p}' | grep -v '^$' | head -1)
