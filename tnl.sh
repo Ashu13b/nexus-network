@@ -15,8 +15,9 @@ tnl() {
           printf "\n---NEXUS_CF_PID---\n"
           pgrep -x cloudflared 2>/dev/null | head -1
           printf "\n---NEXUS_CF_URL---\n"
-          grep -oE "https://[^ ]+\.trycloudflare\.com" ~/cf.log ~/.cloudflared/cloudflared.log 2>/dev/null | tail -1 \
-              || journalctl _COMM=cloudflared --no-pager -n 200 2>/dev/null | grep -oE "https://[^ ]+\.trycloudflare\.com" | tail -1
+          _u=$(grep -oE "https://[^ ]+\.trycloudflare\.com" ~/cf.log 2>/dev/null | tail -1)
+          [ -z "$_u" ] && _u=$(journalctl _COMM=cloudflared --no-pager -n 200 2>/dev/null | grep -oE "https://[^ ]+\.trycloudflare\.com" | tail -1)
+          echo "$_u"
       ' 2>/dev/null)
       local r_ports_raw; r_ports_raw=$(printf '%s\n' "$oracle_raw" | awk '/---NEXUS_CF_PID---/{exit}1')
       local r_cf_active; r_cf_active=$(printf '%s\n' "$oracle_raw" | sed -n '/---NEXUS_CF_PID---/,/---NEXUS_CF_URL---/{/---NEXUS/!p}' | grep -v '^$' | head -1)
@@ -202,11 +203,11 @@ tnl() {
         local _ports=() _labels=() _protected=" ${TNL_PROTECTED_PORTS:-} "
         # Single oracle SSH call: get ports + CF status
         local _oracle_raw; _oracle_raw=$(ssh "${ssh_opt[@]}" "$remote" '
-            ss -tlnp 2>/dev/null | grep -oE ":[0-9]+" | tr -d ":" | sort -un | awk "$1+0>1023"
+            ss -tlnp 2>/dev/null | grep -oE ":[0-9]+" | tr -d ":" | sort -un
             echo "---CF---"
             pgrep -x cloudflared 2>/dev/null | head -1
         ' 2>/dev/null)
-        local _r_ports; _r_ports=$(printf '%s\n' "$_oracle_raw" | awk '/---CF---/{exit}1' | tr '\n' ' ')
+        local _r_ports; _r_ports=$(printf '%s\n' "$_oracle_raw" | awk '/---CF---/{exit}1' | awk '$0+0>1023' | tr '\n' ' ')
         local _ocf; _ocf=$(printf '%s\n' "$_oracle_raw" | sed -n '/---CF---/,$p' | grep -v '^---' | grep -v '^$' | head -1)
         local _l_ports; _l_ports=$(list_local_ports)
         # Named pipelines from get_active_pipelines
