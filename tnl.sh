@@ -196,11 +196,6 @@ tnl() {
     "fserver"|"fshare")
       echo -e "${C_YELLOW}⚠ Use 'fshare' directly — see: fshare help${C_RESET}" ;;
 
-    "xcf")
-      pkill -f "cloudflared tunnel" 2>/dev/null
-      ssh "${ssh_opt[@]}" "$remote" "pkill -x cloudflared" 2>/dev/null
-      echo -e "${C_RED}[KILLED]${C_RESET} Cloudflare stopped (local + oracle)." ;;
-
     "x")
       local p="$arg2"
       if [ -z "$p" ]; then
@@ -279,10 +274,9 @@ tnl() {
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "cld2all"  "oracle port → WiFi + internet"
       printf "\n  ${C_DIM}SYSTEM (tnl only)${C_RESET}\n"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl st"   "network dashboard"
-      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl x"    "smart kill (skips protected ports)"
+      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl x"    "pick & kill (local + oracle CF)"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xst"  "status → pick → kill"
-      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xcf"  "kill cloudflare only (local + oracle)"
-      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xall" "kill everything"
+      printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl xall" "kill everything local"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "tnl deploy" "deploy server to tablet"
       printf "\n  ${C_DIM}FILE SHARING${C_RESET}\n"
       printf "  ${C_CYAN}%-12s${C_RESET} %s\n" "fshare"   "share folders — see: fshare help\n" ;;
